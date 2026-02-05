@@ -28,7 +28,7 @@ Production-ready Discord bot for the DYNASTY trading community. Scans all Bybit 
 
 ```bash
 # Clone repository
-git clone <repository-url>
+git clone https://github.com/Vandy232301/bot_funding_rate.git
 cd bot_funding_rate
 
 # Install dependencies
