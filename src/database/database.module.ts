@@ -47,8 +47,10 @@ export class DatabaseModule {
               entities: [Signal, FundingSnapshot],
               synchronize: configService.get('NODE_ENV') !== 'production',
               logging: configService.get('NODE_ENV') === 'development',
-              retryAttempts: 1,
+              retryAttempts: 0, // Don't retry - fail fast if DB unavailable
               retryDelay: 1000,
+              // Don't fail application if DB connection fails
+              autoLoadEntities: true,
             };
 
             // SSL pentru Digital Ocean Managed Databases

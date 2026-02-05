@@ -127,9 +127,12 @@ export class SignalService implements OnModuleInit {
 
       // Check score threshold
       if (!this.scoringEngine.meetsThreshold(signal.score)) {
-        this.logger.debug(
-          `Signal for ${symbol} scored ${signal.score}, below threshold`,
-        );
+        // Only log if score is close to threshold (>= 70) to reduce verbosity
+        if (signal.score >= 70) {
+          this.logger.debug(
+            `Signal for ${symbol} scored ${signal.score}, below threshold (75)`,
+          );
+        }
         return;
       }
 

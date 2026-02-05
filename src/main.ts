@@ -34,8 +34,15 @@ async function bootstrap() {
       process.exit(0);
     });
   } catch (error) {
-    logger.error('❌ Failed to start application:', error);
-    throw error;
+    // Don't fail if it's just a database connection error
+    if (error?.message?.includes('database') || error?.message?.includes('EPERM')) {
+      logger.warn('⚠️  Database connection failed, continuing without database...');
+      logger.warn('💡 Set ENABLE_DATABASE=false in .env to disable database');
+      // Continue running without database
+    } else {
+      logger.error('❌ Failed to start application:', error);
+      throw error;
+    }
   }
 }
 

@@ -224,16 +224,9 @@ Trade on: ${tradeOnLinks}
    * Get channel ID based on signal type
    */
   private getChannelIdForSignalType(signalType: SignalType): string {
-    switch (signalType) {
-      case SignalType.REVERSAL:
-        return this.reversalChannelId;
-      case SignalType.TREND:
-        return this.trendChannelId;
-      case SignalType.DIVERGENCE:
-        return this.divergenceChannelId;
-      default:
-        return this.alertChannelId;
-    }
+    // All signals are now REVERSAL type (RSI Confluence)
+    // Use reversal channel for all signals
+    return this.reversalChannelId || this.alertChannelId;
   }
 
   /**

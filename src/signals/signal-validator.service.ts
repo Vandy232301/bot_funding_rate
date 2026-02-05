@@ -7,22 +7,17 @@ import { SignalType, SignalBias } from '../database/entities/signal.entity';
 import { Signal, SignalContext } from '../common/interfaces/signal.interface';
 
 /**
- * SignalValidatorService - Implements DYNASTY strategy logic
- * 1. RSI Confluence (NEW: RSI > 75 + funding for SHORT, RSI < 30 + funding for LONG)
- * 2. Funding Overextension Reversal
- * 3. Funding Trend Confirmation
- * 4. Funding Divergence Alert
+ * SignalValidatorService - Simplified DYNASTY strategy logic
+ * Only RSI Confluence signals:
+ * - SHORT: RSI > 75 + Funding Rate > 0.01%
+ * - LONG: RSI < 30 + Funding Rate < -0.01%
+ * Monitoring on 1m timeframe
  */
 @Injectable()
 export class SignalValidatorService {
   private readonly logger = new Logger(SignalValidatorService.name);
 
-  // Strategy thresholds
-  private readonly REVERSAL_THRESHOLD = 0.04; // ±0.04%
-  private readonly TREND_MIN = 0.005; // ±0.005%
-  private readonly TREND_MAX = 0.02; // ±0.02%
-  private readonly RSI_OVERBOUGHT = 70;
-  private readonly RSI_OVERSOLD = 30;
+  // Strategy thresholds - Only RSI Confluence
   private readonly RSI_CONFLUENCE_SHORT = 75; // RSI > 75 for SHORT confluence
   private readonly RSI_CONFLUENCE_LONG = 30; // RSI < 30 for LONG confluence
   private readonly FUNDING_FACILITATE_SHORT = 0.01; // Funding > 0.01% facilitates SHORT
@@ -37,6 +32,7 @@ export class SignalValidatorService {
 
   /**
    * Validate and detect signals for a symbol
+   * Simplified: Only RSI Confluence signals (Funding Rate + RSI)
    */
   async validateSignal(symbol: string): Promise<Signal | null> {
     try {
@@ -46,28 +42,10 @@ export class SignalValidatorService {
         return null;
       }
 
-      // Check for RSI Confluence signal (highest priority - new logic)
+      // Only check for RSI Confluence signal (Funding Rate + RSI)
       const rsiConfluenceSignal = this.detectRSIConfluenceSignal(symbol, context);
       if (rsiConfluenceSignal) {
         return rsiConfluenceSignal;
-      }
-
-      // Check for reversal signal
-      const reversalSignal = this.detectReversalSignal(symbol, context);
-      if (reversalSignal) {
-        return reversalSignal;
-      }
-
-      // Check for trend confirmation
-      const trendSignal = this.detectTrendSignal(symbol, context);
-      if (trendSignal) {
-        return trendSignal;
-      }
-
-      // Check for divergence
-      const divergenceSignal = this.detectDivergenceSignal(symbol, context);
-      if (divergenceSignal) {
-        return divergenceSignal;
       }
 
       return null;
@@ -183,7 +161,7 @@ export class SignalValidatorService {
     ) {
       return this.createSignal(
         symbol,
-        SignalType.REVERSAL, // Use REVERSAL type for confluence signals
+        SignalType.REVERSAL, // Signal type (REVERSAL for all confluence signals)
         SignalBias.LONG,
         context,
         'SHORT Overcrowded',
@@ -193,141 +171,6 @@ export class SignalValidatorService {
     return null;
   }
 
-  /**
-   * Detect Funding Overextension Reversal signal
-   */
-  private detectReversalSignal(
-    symbol: string,
-    context: SignalContext,
-  ): Signal | null {
-    const { fundingRate, fundingDelta, rsi, momentum } = context;
-
-    // SHORT signal: Funding ≥ +0.04%, RSI ≥ 70, strong upward momentum
-    if (
-      fundingRate >= this.REVERSAL_THRESHOLD &&
-      rsi !== null &&
-      rsi >= this.RSI_OVERBOUGHT &&
-      momentum !== null &&
-      momentum > 1.0
-    ) {
-      // Check if funding is accelerating (delta increasing)
-      const isAccelerating = fundingDelta > 0;
-
-      if (isAccelerating) {
-        return this.createSignal(
-          symbol,
-          SignalType.REVERSAL,
-          SignalBias.SHORT,
-          context,
-          'LONG Overcrowded',
-        );
-      }
-    }
-
-    // LONG signal: Funding ≤ -0.04%, RSI ≤ 30, strong downward momentum
-    if (
-      fundingRate <= -this.REVERSAL_THRESHOLD &&
-      rsi !== null &&
-      rsi <= this.RSI_OVERSOLD &&
-      momentum !== null &&
-      momentum < -1.0
-    ) {
-      // Check if funding is accelerating negatively (delta decreasing)
-      const isAccelerating = fundingDelta < 0;
-
-      if (isAccelerating) {
-        return this.createSignal(
-          symbol,
-          SignalType.REVERSAL,
-          SignalBias.LONG,
-          context,
-          'SHORT Overcrowded',
-        );
-      }
-    }
-
-    return null;
-  }
-
-  /**
-   * Detect Funding Trend Confirmation signal
-   */
-  private detectTrendSignal(
-    symbol: string,
-    context: SignalContext,
-  ): Signal | null {
-    const { fundingRate, fundingDelta, momentum } = context;
-
-    // LONG trend: Funding between +0.005% → +0.02%, increasing gradually
-    if (
-      fundingRate >= this.TREND_MIN &&
-      fundingRate <= this.TREND_MAX &&
-      fundingDelta > 0 &&
-      momentum !== null &&
-      momentum > 0
-    ) {
-      return this.createSignal(
-        symbol,
-        SignalType.TREND,
-        SignalBias.LONG,
-        context,
-        'LONG Overcrowded',
-      );
-    }
-
-    // SHORT trend: Funding between -0.005% → -0.02%, decreasing gradually
-    if (
-      fundingRate <= -this.TREND_MIN &&
-      fundingRate >= -this.TREND_MAX &&
-      fundingDelta < 0 &&
-      momentum !== null &&
-      momentum < 0
-    ) {
-      return this.createSignal(
-        symbol,
-        SignalType.TREND,
-        SignalBias.SHORT,
-        context,
-        'SHORT Overcrowded',
-      );
-    }
-
-    return null;
-  }
-
-  /**
-   * Detect Funding Divergence signal (early warning)
-   */
-  private detectDivergenceSignal(
-    symbol: string,
-    context: SignalContext,
-  ): Signal | null {
-    const { fundingRate, momentum } = context;
-
-    // Price ↑ while Funding ↓ → Distribution risk (bearish divergence)
-    if (momentum !== null && momentum > 1.0 && fundingRate < -0.005) {
-      return this.createSignal(
-        symbol,
-        SignalType.DIVERGENCE,
-        SignalBias.SHORT,
-        context,
-        'SHORT Overcrowded',
-      );
-    }
-
-    // Price ↓ while Funding ↑ → Accumulation risk (bullish divergence)
-    if (momentum !== null && momentum < -1.0 && fundingRate > 0.005) {
-      return this.createSignal(
-        symbol,
-        SignalType.DIVERGENCE,
-        SignalBias.LONG,
-        context,
-        'LONG Overcrowded',
-      );
-    }
-
-    return null;
-  }
 
   /**
    * Create signal object
@@ -349,7 +192,7 @@ export class SignalValidatorService {
     );
     const momentum = isExhaustion ? 'Exhaustion' : 'Expansion';
 
-    // Determine timeframe (simplified - use 1m for now)
+    // Always use 1m timeframe for monitoring
     const timeframe = '1m';
 
     // Build context message
@@ -365,11 +208,11 @@ export class SignalValidatorService {
     const movementUp = Math.abs(momentumValue > 0 ? momentumValue : 2.0);
     const movementDown = Math.abs(momentumValue < 0 ? Math.abs(momentumValue) : 2.0);
 
-    // For now, use same RSI for all timeframes (can be enhanced to calculate separately)
+    // Use RSI from 1m timeframe only (simplified monitoring)
     const rsi = context.rsi || 0;
-    const rsi15m = rsi + (Math.random() * 5 - 2.5); // Simulate slight variation
-    const rsi5m = rsi + (Math.random() * 3 - 1.5);
     const rsi1m = rsi;
+    const rsi5m = rsi; // Same as 1m for now
+    const rsi15m = rsi; // Same as 1m for now
 
     return {
       symbol,
@@ -395,7 +238,7 @@ export class SignalValidatorService {
   }
 
   /**
-   * Build human-readable context message (concise format like in the image)
+   * Build human-readable context message (simplified for RSI Confluence only)
    */
   private buildContextMessage(
     signalType: SignalType,
@@ -405,44 +248,23 @@ export class SignalValidatorService {
   ): string {
     const parts: string[] = [];
 
-    // Add momentum description
-    if (context.momentum) {
-      const absMomentum = Math.abs(context.momentum);
-      if (absMomentum > 5.0) {
-        parts.push('Rapid pump');
-      } else if (absMomentum > 2.0) {
-        parts.push('Strong move');
-      }
-    }
-
-    // Add RSI description
+    // Add RSI description (always extreme for confluence signals)
     if (context.rsi) {
       if (context.rsi >= 75 || context.rsi <= 25) {
         parts.push('RSI extreme');
-      } else if (context.rsi >= 70 || context.rsi <= 30) {
-        parts.push('RSI overextended');
       }
     }
 
     // Add funding description
-    if (Math.abs(context.fundingRate) >= 0.04) {
-      parts.push('extreme funding');
-    } else if (Math.abs(context.fundingRate) >= 0.02) {
+    if (Math.abs(context.fundingRate) >= 0.02) {
       parts.push('high funding');
-    }
-
-    // Add position description
-    if (signalType === SignalType.REVERSAL) {
-      parts.push('at resistance');
-    } else if (signalType === SignalType.TREND) {
-      parts.push('trend continuation');
-    } else if (signalType === SignalType.DIVERGENCE) {
-      parts.push('divergence risk');
+    } else {
+      parts.push('funding confluence');
     }
 
     // If no parts, add generic description
     if (parts.length === 0) {
-      return `${fundingBias} with funding rate at ${context.fundingRate.toFixed(4)}%`;
+      return `RSI + Funding confluence (${context.fundingRate.toFixed(4)}%)`;
     }
 
     return parts.join(' + ');
